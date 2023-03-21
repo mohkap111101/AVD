@@ -1,0 +1,152 @@
+function [dist,torque,torque_ult] = RCMK_Spars(ds)
+
+%% Load the variables from workspace file
+load Mohkap_workspace.mat
+
+%% V-n diagram for the aircraft
+
+max_lim_load = 2.5; %these are values of load factor
+min_lim_load = -1;
+
+max_ult_load = 1.5*max_lim_load;
+min_ult_load = 1.5*min_lim_load;
+
+Vc = V_c2; %TAS
+Va = sqrt((max_lim_load*MTOW*9.81)/(0.5 * rho_leg2*Sref*Cl_max_aircraft)); %TAS
+VH = sqrt((min_lim_load*MTOW*9.81)/(0.5 * rho_leg2*Sref*Cl_min_aircraft)); %TAS
+
+VD = (1/0.8)*Vc; %TAS
+V_s = 111.9 ; %TAS
+
+Va_ult = sqrt((max_ult_load*MTOW*9.81)/(0.5 * rho_leg2*Sref*Cl_max_aircraft)); %TAS
+VH_ult = sqrt((min_ult_load*MTOW*9.81)/(0.5 * rho_leg2*Sref*Cl_min_aircraft)); %TAS
+
+% Values of angle of attack and Cl at Va different velocities
+
+Cl_Va = Cl_max_aircraft;
+Cl_VD = (max_lim_load * MTOW * 9.81)/(0.5 * rho_leg2 * VD^2 * Sref);
+
+alpha_Va = Cl_Va/a_total + alpha_0_wing*pi/180;
+alpha_VD = Cl_VD/a_total + alpha_0_wing*pi/80;
+
+% Finding the pithcing moments generated
+
+Cm_0 = -0.075;
+Cm_alpha = -0.14132;
+
+M0_Va = (Cm_alpha * alpha_Va + Cm_0) * 0.5 * rho_leg2*Va^2 * Sref * c_bar_wing;
+M0_VD = (Cm_alpha * alpha_VD + Cm_0) * 0.5 * rho_leg2 * VD^2 *Sref * c_bar_wing;
+
+% Typipcal values for gust velocities and delta_n 
+
+mu = (2*MTOW*9.81/Sref)/(rho_leg2*9.81*c_bar_wing*a_total);
+K = (0.88*mu)/(5.3 + mu);
+
+% Finding VB
+U_ref = interp1([15000 60000], [13.41 6.36], h2);
+
+VB = V_s*(1 + (K*U_ref*3.281*Vc*1.944*a_total)/(498*MTOW*9.81/Sref * 0.02))^(1/2); % EAS
+
+Ude_VB = 20; % EAS 
+Ude_Vc = 15.2; % EAS
+Ude_VD = 7.6; %EAS
+
+U_VB = K*Ude_VB * sqrt(rho0/rho_leg2); %TAS
+U_Vc = K*Ude_Vc  * sqrt(rho0/rho_leg2); %TAS
+U_VD = K*Ude_VD  * sqrt(rho0/rho_leg2); %TAS
+
+delta_n_VB = (rho_leg2*U_VB*VB* sqrt(rho0/rho_leg2) * a_total)/(2*MTOW*9.81/Sref);
+delta_n_Vc = (rho_leg2*U_Vc*Vc*a_total)/(2*MTOW*9.81/Sref);
+delta_n_VD = (rho_leg2*U_VD*VD*a_total)/(2*MTOW*9.81/Sref);
+
+V_from_0_to_Va = linspace(0, Va, 1000);
+n_from_0_to_max = 0.5*rho_leg2*V_from_0_to_Va.^2*Sref*Cl_max_aircraft./(MTOW*9.81);
+
+V_from_0_to_VH = linspace(0, VH, 1000);
+n_from_0_to_min = 0.5*rho_leg2*V_from_0_to_VH.^2*Sref*Cl_min_aircraft./(MTOW*9.81);
+
+V_from_Va_to_Va_ult = linspace(Va, Va_ult, 1000);
+n_from_max_to_max_ult = 0.5*rho_leg2*V_from_Va_to_Va_ult.^2*Sref*Cl_max_aircraft./(MTOW*9.81);
+
+V_from_VH_to_VH_ult = linspace(VH, VH_ult, 1000);
+n_from_min_to_min_ult = 0.5*rho_leg2*V_from_VH_to_VH_ult.^2*Sref*Cl_min_aircraft./(MTOW*9.81);
+
+%% Loads on the aircraft structures - Inertial and Aero
+% Discretisations
+magpie.wing.disc = 0:ds:(b-de_fuselage)/2;
+
+% Wing inertial loads
+% Wing aero loads
+% Wing combined loads 
+% Fuselage inertial loads
+% Fuselage aero loads
+% Fuselage combined loads
+% Tail aero loads
+% Tail inertial loads
+% Tail combined loads
+
+% Define stations - rib spacing - ds
+
+%% Wing inertial loads
+% weight
+
+chord_dist = chord(magpie.wing.disc + de_fuselage/2, c0, c_tip, b);
+
+n = 1;
+[magpie.wing.inertial.load.n_1, wing_weight_per_span, fuel_weight_per_span, engine_weight_load, uc_weight_per_span] = WingInertiaLoads(magpie.wing.disc, n, chord_dist, ds);
+[magpie.wing.inertial.SF.n_1, magpie.wing.inertial.BM.n_1] = CalculateSFandBM(magpie.wing.inertial.load.n_1, magpie.wing.disc);
+
+
+
+% landing
+[magpie.wing.gear.SF, magpie.wing.gear.BM] = wingLanding(magpie.wing.disc, MTOW);
+magpie.wing.landing.SF = 3 * magpie.wing.inertial.SF.n_1 - magpie.wing.gear.SF;
+magpie.wing.landing.BM = 3 * magpie.wing.inertial.BM.n_1 - magpie.wing.gear.BM;
+
+%% Wing aero loads
+
+% lift distribution
+magpie.wing.aero.load.n_1   = wingAero(magpie.wing.disc, MTOW);
+magpie.wing.aero.load.n_max = max_ult_load * magpie.wing.aero.load.n_1;
+magpie.wing.aero.load.n_min = min_ult_load * magpie.wing.aero.load.n_1;
+
+% zero-lift pitching moment distribution
+magpie.wing.pitchingMom.V_a = wingMom(magpie.wing.disc, M0_Va);
+magpie.wing.pitchingMom.V_d = wingMom(magpie.wing.disc, M0_VD);
+
+[magpie.wing.aero.SF.n_1, magpie.wing.aero.BM.n_1] = CalculateSFandBM(magpie.wing.aero.load.n_1, magpie.wing.disc);
+
+%% Wing Combined SF and BM
+
+%, wing_weight_per_span, fuel_weight_per_span, engine_weight_load, uc_weight_per_span] = WingInertiaLoads(magpie.wing.disc, n, chord_dist);
+[magpie.wing.inertial.load.n_max_ult, wing_weight_per_span_n_ult, fuel_weight_per_span_n_ult, engine_weight_load_n_ult, uc_weight_per_span_n_ult] = WingInertiaLoads(magpie.wing.disc,max_ult_load, chord_dist, ds);
+magpie.wing.combined.BM = magpie.wing.aero.BM.n_1 - magpie.wing.inertial.BM.n_1;
+magpie.wing.combined.SF = magpie.wing.aero.SF.n_1 - magpie.wing.inertial.SF.n_1;
+magpie.wing.combined.load.n_max = magpie.wing.aero.load.n_max - magpie.wing.inertial.load.n_max_ult;
+
+
+%% Wing torque 
+
+V = Va;
+chord_dist = chord(magpie.wing.disc + de_fuselage/2, c0, c_tip, b);
+Thrust = 143200/2;
+T = 1;
+
+[comb_torque_n_ult_vd, torque_n_ult_vd] = WingTorque(magpie.wing.aero.load.n_max, wing_weight_per_span_n_ult, fuel_weight_per_span_n_ult, engine_weight_load_n_ult, uc_weight_per_span_n_ult, chord_dist, magpie.wing.disc, 0.25, magpie.wing.pitchingMom.V_d, Thrust, c_bar_wing, c_tip, c0, b);
+[comb_torque_n_ult_va, torque_n_ult_va] = WingTorque(magpie.wing.aero.load.n_max, wing_weight_per_span_n_ult, fuel_weight_per_span_n_ult, engine_weight_load_n_ult, uc_weight_per_span_n_ult, chord_dist, magpie.wing.disc, 0.25, magpie.wing.pitchingMom.V_a, Thrust, c_bar_wing, c_tip, c0, b);
+[comb_torque, torque] = WingTorque(magpie.wing.aero.load.n_1, wing_weight_per_span, fuel_weight_per_span, engine_weight_load, uc_weight_per_span, chord_dist, magpie.wing.disc, 0.25, magpie.wing.pitchingMom.V_d, Thrust, c_bar_wing, c_tip, c0, b);
+[comb_torque_landing, torque_landing] = WingTorqueLanding(wing_weight_per_span_n_ult, fuel_weight_per_span_n_ult, engine_weight_load_n_ult, chord_dist, magpie.wing.disc, 0.25, 0.3*Thrust, c_bar_wing, c_tip, c0, b);
+
+final_torque = zeros(1,length(magpie.wing.disc));
+
+for i = 1:length(magpie.wing.disc)
+    max_torque = 0;
+    if(abs(torque_landing(i)) >= abs(torque_n_ult_vd(i)))
+        final_torque(i) = torque_landing(i);
+    else
+        final_torque(i) = torque_n_ult_vd(i);
+    end
+end
+
+torque_ult = final_torque;
+dist = magpie.wing.disc
