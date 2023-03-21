@@ -1,0 +1,79 @@
+function [comb_torque, torque] = WingTorqueLanding(wing_weight_per_span, fuel_weight_per_span, engine_weight_load, chord_dist, y, x_ac, Thrust, c_bar_wing, ctip, c0, b)
+% Function to determine the torque distributions and total torque along the
+% span of the wing
+% Outputs -> y              array of stations along the wing span 
+%            comb_torque    array of the torques at each station along the
+%                           span
+%            torque         array of the total torque at each station
+%                           along the span
+
+load Mohkap_workspace.mat;
+
+ds = y(2)-y(1);
+y = round(y./ds)*ds;
+
+%% Define position of shear centre with respect to chord and the fuselage nose
+
+shear_centre_over_c = 0.2 + (0.6 - 0.2)/2;
+shear_centre_pos = 10 + shear_centre_over_c.*chord_dist; %% Needs to be chnaged with actual values
+
+%% Define the locations of each different load where they act
+wing_cg_over_c = 0.25 + 0.4894/c_bar_wing;
+uc_cg_position = 12.45;
+uc_cg_position_over_c = (0.25*chord(uc_cg_position, c0, ctip, b) + 0.95 + 0.4894)./chord(uc_cg_position, c0, ctip, b);
+fuel_cg_over_c = 0.2 + (0.6 - 0.2)/2;
+engine_location = 4.85 - de_fuselage/2; % m
+engine_z_location = 1.2;
+engine_cg_location_over_c = 0.189./chord(engine_location, c0, ctip, b);
+uc_location_span = 2 - de_fuselage/2;
+
+UC_Force = MTOW*9.81/2;
+
+%% Define the engine thrust load
+engine_thrust_load = zeros(1, length(y));
+uc_impact_load = zeros(1, length(y));
+engine_thrust_load(find(y == round(engine_location/ds)*ds)) = Thrust;
+uc_impact_load(find(y == round(uc_location_span/ds)*ds)) = 2.7*UC_Force;
+% find(y == round(engine_location/ds)*ds)
+%% Define the arrrays for torque dist and combined torque
+torque = zeros(1, length(y));
+comb_torque = zeros(1, length(y));
+
+%% Determine the torque distributions for each different load component for each wing station per unit span
+wing_weight_torque = wing_weight_per_span.*(shear_centre_over_c - wing_cg_over_c).*chord_dist;
+fuel_weight_torque = fuel_weight_per_span.*(shear_centre_over_c - fuel_cg_over_c).*chord_dist;
+engine_weight_torque = engine_weight_load.*(shear_centre_over_c - engine_cg_location_over_c).*chord_dist;
+uc_impact_torque = -uc_impact_load.*(shear_centre_over_c - uc_cg_position_over_c);
+engine_thrust_torque = engine_thrust_load.*(-engine_z_location);
+%% Determine the torque dists at each span station suing trapezium method
+for i=1:length(y)-1
+
+    wing_weight_torque(i) = (wing_weight_torque(i) + wing_weight_torque(i+1))*ds/2;
+
+    fuel_weight_torque(i) = (fuel_weight_torque(i) + fuel_weight_torque(i+1))*ds/2;
+
+    engine_weight_torque(i) = (engine_weight_torque(i));
+
+    uc_impact_torque(i) = (uc_impact_torque(i));
+
+    engine_thrust_torque(i) = (engine_thrust_torque(i));
+
+end
+
+
+
+wing_weight_torque(length(y)) = 0;
+fuel_weight_torque(length(y)) = 0;
+engine_weight_torque(length(y)) = 0;
+uc_impact_torque(length(y)) = 0;
+engine_thrust_torque(length(y)) = 0;
+
+comb_torque = wing_weight_torque + fuel_weight_torque + engine_thrust_torque + engine_weight_torque + uc_impact_torque;
+
+
+%% Find the total torque distribution along the whole span of the wing
+for i=1:length(y)
+    
+    torque(i) = sum(comb_torque(i:end));
+
+end

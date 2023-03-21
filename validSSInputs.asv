@@ -1,0 +1,38 @@
+function valid = validSSInputs(geometry, material)
+% calculates whether inputs are valid
+% returns 1 if inputs are valid
+% returns 0 if inputs are invalid
+
+% initialise valid
+valid = true;
+
+%% Compressive Buckling Coefficient
+% K graph inputs
+h_b     = geometry.h/geometry.b;
+t_s_t   = geometry.t_s/geometry.t;
+
+% check h_b is on the graph
+if (h_b < 0.15) || (h_b > 1)
+    valid = false;
+elseif t_s_t ~= any([0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.25, 1.5, 2])
+    valid = false;
+else
+    %% Buckling Parameters
+    I           = inertiaZ(geometry);
+    trueN       = realN(geometry,0);
+    
+    %% Skin Buckling
+    if plateBuckle(K, material.E, geometry, trueN)
+        valid = false;
+    end
+    
+    %% Stringer Buckling
+    if eulerBuckle(material.E, I, geometry, trueN)
+        valid = false;
+    end
+    
+    %% Compressive Yield
+    if yield(geometry, material, trueN)
+        valid = false;
+    end
+end

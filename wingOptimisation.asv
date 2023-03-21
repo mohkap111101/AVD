@@ -1,0 +1,20 @@
+function [minValues, minMass] = wingOptimisation(materials, mins, maxs, wing)
+    
+    options = optimoptions('fmincon','Display','iter','ConstraintTolerance',1e-20,'OptimalityTolerance',1e-20,'UseParallel',true);
+
+    % Setup a global search 
+
+    x_0 = [1.5e-3, 2e-3, 3e-2, 2e-2];
+
+    gs_problem = createOptimProblem('fmincon', ...
+        'objective', @(x) fus_min_mass(x(1), x(2), x(3), Ns(i), Fuselage, BM_fuselage, SF_fuselage, cabin_length, flange_web_ratio), ...
+        "x0", X_s_0, "lb", [ts_min, hs_min, t_skin_min], ....
+        "ub", [ts_max, hs_max, t_skin_max], "options", ...
+        options);
+
+    gs = GlobalSearch("Display", "Iter", "PlotFcn","gsplotbestf");
+
+    rng(14, "twister")
+
+    [minValues, minMass] = run(gs, gs_problem);
+end

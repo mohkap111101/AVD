@@ -1,0 +1,68 @@
+function [M , t_E, t_R] = RibSpacing(L,T,s)
+
+load('liftSurfGeom.mat');
+
+% Now, it is possible to discretise the wing span into increments of 's':
+span = 12.165; % Wing Span/2 (m)
+
+% The chord distribution along the span is:
+
+syms x;
+
+root_chord=4.073949602;
+tip_chord=1.756951274;
+
+c = ((tip_chord-root_chord)/span)*s + root_chord;
+
+
+%% RC's Remerz function to find BM at each rib:
+% Bending Moments:
+
+
+BM_i=-1*Remerz(s);
+BM_a=aeroMom(wing,s);
+
+BM=3.75*(BM_a-BM_i);
+
+coords=wingbox(wing);
+
+% Now, it is possible to find the wing box height 
+D = c*((coords(1,2)-coords(2,2))+(coords(4,2)-coords(3,2)))/2;
+
+%% Crushing 
+
+% To determine the rib thickness, it is necessary to equate the yield
+% stress of the material to the critical buckling stress of the material
+
+% From Zahra, the critical buckling stress is given by: 3.62E(t/h)^2 where
+% E is Young's Modulus, t is rib thickness, and h is wing box depth
+
+% From Daqing, the critical yield stress is given by: F/t*c where F is the
+% crush force (see video 11:40), and c is chord at rib position.
+
+% F = (M^2 * s * h * t_e * c)/ (2 * E * I^2) 
+
+syms t_e
+
+t_r = (L*t_e - L*T)/D;
+E = 7.35*10^10; % Young's Modulus (Pa) - Used Al currently
+
+c=c*0.4;
+% Crushing force:
+
+I = (c * t_e^3)/12 + (c * t_e * (D/2)^2);
+F = (BM^2 * L * D * t_e * c) / (2*E*I^2);
+t_r2 = ((F * D^2)/(3.62*E*c))^(1/3);
+
+eq = t_r == t_r2;
+t_E = vpasolve(eq, t_e);
+t_E = double(t_E);
+t_R = (L*t_E - L*T)/D;
+
+if t_R < 0.001
+    t_R == 0.001;
+end
+
+t_E = T + (D*t_R)/L;
+rho = 2.85*10^3;
+M = t_E * c * rho;
